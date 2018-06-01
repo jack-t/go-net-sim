@@ -17,6 +17,13 @@ type Simulator struct {
 	queue <-chan Message
 }
 
+func NewSimulator() Simulator {
+	return Simulator {
+		handles: make(map[NodeId]NodeHandle),
+		queue: make(<-chan Message),
+	}
+}
+
 func (s *Simulator) DeliverMessage(m Message) {
 	for _, d := range m.Recipients {
 		if val, ok := s.handles[d]; ok {
@@ -36,28 +43,34 @@ func (s *Simulator) AddNode(n Node, i NodeId) {
 }
 
 func (s *Simulator) Launch() {
-	for k, v := range s.handles {
+	for _, v := range s.handles {
 		go v.handler()
 	}
 }
+
 // implemented by client, provided somehow
-type Noder interface {
-	func Node(type string) Node
+type NodeMaker interface {
+	Make(string) Node
 }
 
-func (s* Simulator) HandleCommand(cmd string, noder Noder) {
-	tokens := strings.SplitN(" ", 2)
+func (s* Simulator) HandleCommand(cmd string, noder NodeMaker) {
+	tokens := strings.SplitN(cmd, " ", 2)
 	if len(tokens) != 2 {
-		fmt.Printf("Syntax error on line: %s", cmd)
-		panic()
+		
+		panic(fmt.Sprintf("Syntax error on line: %s", cmd))
 	}
 	switch strings.ToUpper(tokens[0]) {
 	case "ADD":
-		args := strings.SplitN(tokens[1], 2)
-		id := strconv.ParseInt(args[0], 0, 32)
-		node := noder.Node(args[1])
-		s.AddNode(node, id)
+		args := strings.SplitN(tokens[1], " ", 2)
+		id, _ := strconv.ParseInt(args[0], 0, 32)
+		node := noder.Make(args[1])
+		s.AddNode(node, NodeId(id))
 	case "NODE":
-		// NODE 1 JOIN 0 -- in chord, have node 1 join through 0; JOIN 0 is passed to node 1
+		args := strings.Split(tokens[1], " ") // NODE {node id} CMD
+		if len(args) < 2 {
+			panic(fmt.Sprintf("Not enough arguments to command %s", cmd))
+		}
+		id, _ := strconv.ParseInt(args[0], 0, 32)
+		s.handles[NodeId(id)].HandleCommand(args[0], args[1:])
 	}
 }
